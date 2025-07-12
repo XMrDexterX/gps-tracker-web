@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GPS Tracker - ESP32</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+      }
+
+      .header {
+        background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+        color: white;
+        padding: 30px;
+        text-align: center;
+      }
+
+      .header h1 {
+        font-size: 2.5rem;
+        margin-bottom: 10px;
+        font-weight: 300;
+      }
+
+      .header p {
+        opacity: 0.9;
+        font-size: 1.1rem;
+      }
+
+      .dashboard {
+        display: grid;
+        grid-template-columns: 1fr 350px;
+        height: calc(100vh - 200px);
+      }
+
+      .map-container {
+        position: relative;
+        background: #f8f9fa;
+      }
+
+      #map {
+        width: 100%;
+        height: 100%;
+      }
+
+      .sidebar {
+        background: #f8f9fa;
+        border-left: 1px solid #e9ecef;
+        overflow-y: auto;
+      }
+
+      .controls {
+        padding: 20px;
+        border-bottom: 1px solid #e9ecef;
+      }
+
+      .control-group {
+        margin-bottom: 15px;
+      }
+
+      .control-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 600;
+        color: #495057;
+      }
+
+      .control-group select,
+      .control-group input {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #ced4da;
+        border-radius: 8px;
+        font-size: 14px;
+      }
+
+      .btn {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+        width: 100%;
+        margin-top: 10px;
+        transition: transform 0.2s;
+      }
+
+      .btn:hover {
+        transform: translateY(-2px);
+      }
+
+      .status {
+        padding: 20px;
+        border-bottom: 1px solid #e9ecef;
+      }
+
+      .status-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+      }
+
+      .status-label {
+        font-weight: 600;
+        color: #495057;
+      }
+
+      .status-value {
+        font-weight: 700;
+        color: #28a745;
+      }
+
+      .offline {
+        color: #dc3545 !important;
+      }
+
+      .data-list {
+        padding: 20px;
+      }
+
+      .data-item {
+        background: white;
+        border: 1px solid #e9ecef;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 10px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+      }
+
+      .data-time {
+        font-size: 12px;
+        color: #6c757d;
+        margin-bottom: 5px;
+      }
+
+      .data-coords {
+        font-family: "Courier New", monospace;
+        font-size: 13px;
+        color: #495057;
+      }
+
+      .data-stats {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-top: 8px;
+        font-size: 11px;
+        color: #6c757d;
+      }
+
+      .loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 200px;
+        color: #6c757d;
+      }
+
+      .error {
+        background: #f8d7da;
+        color: #721c24;
+        padding: 15px;
+        border-radius: 8px;
+        margin: 20px;
+      }
+
+      @media (max-width: 768px) {
+        .dashboard {
+          grid-template-columns: 1fr;
+          grid-template-rows: 1fr auto;
+        }
+
+        .sidebar {
+          max-height: 400px;
+          border-left: none;
+          border-top: 1px solid #e9ecef;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🛰️ GPS Tracker</h1>
+        <p>Seguimiento en tiempo real del dispositivo ESP32</p>
+      </div>
+
+      <div class="dashboard">
+        <div class="map-container">
+          <div id="map"></div>
+        </div>
+
+        <div class="sidebar">
+          <div class="controls">
+            <div class="control-group">
+              <label>Dispositivo:</label>
+              <select id="deviceSelect">
+                <option value="esp32_gps_001">ESP32 GPS 001</option>
+              </select>
+            </div>
+
+            <div class="control-group">
+              <label>Límite de puntos:</label>
+              <select id="limitSelect">
+                <option value="10">10 puntos</option>
+                <option value="25" selected>25 puntos</option>
+                <option value="50">50 puntos</option>
+                <option value="100">100 puntos</option>
+              </select>
+            </div>
+
+            <button class="btn" onclick="loadGPSData()">🔄 Actualizar</button>
+            <button class="btn" onclick="toggleAutoUpdate()">
+              ⏱️ Auto-actualizar
+            </button>
+          </div>
+
+          <div class="status">
+            <div class="status-item">
+              <span class="status-label">Estado:</span>
+              <span class="status-value" id="connectionStatus"
+                >Conectando...</span
+              >
+            </div>
+            <div class="status-item">
+              <span class="status-label">Último dato:</span>
+              <span class="status-value" id="lastUpdate">-</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">Total puntos:</span>
+              <span class="status-value" id="totalPoints">0</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">Precisión GPS:</span>
+              <span class="status-value" id="gpsAccuracy">-</span>
+            </div>
+          </div>
+
+          <div class="data-list">
+            <h4 style="margin-bottom: 15px; color: #495057">
+              📍 Datos recientes
+            </h4>
+            <div id="dataList">
+              <div class="loading">Cargando datos...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Configuración
+      const API_BASE_URL =
+        "https://0frua4n2a3.execute-api.us-east-2.amazonaws.com/prod";
+      const GOOGLE_MAPS_API_KEY = "AIzaSyBaZ-Xkmg3TXummVgkmmXsiWSOD87-DJUk"; // Reemplaza con tu API key
+
+      let map;
+      let markers = [];
+      let path = null;
+      let autoUpdateInterval = null;
+      let isAutoUpdate = false;
+
+      // Inicializar cuando se cargue Google Maps
+      function initMap() {
+        // Coordenadas iniciales (Panamá)
+        const initialPosition = { lat: 8.5559, lng: -82.8302 };
+
+        map = new google.maps.Map(document.getElementById("map"), {
+          zoom: 15,
+          center: initialPosition,
+          mapTypeId: "hybrid",
+          styles: [
+            {
+              featureType: "poi",
+              elementType: "labels",
+              stylers: [{ visibility: "off" }],
+            },
+          ],
+        });
+
+        // Cargar datos iniciales
+        loadGPSData();
+      }
+
+      // Cargar datos GPS desde la API
+      async function loadGPSData() {
+        try {
+          const deviceId = document.getElementById("deviceSelect").value;
+          const limit = document.getElementById("limitSelect").value;
+
+          document.getElementById("connectionStatus").textContent =
+            "Cargando...";
+          document.getElementById("connectionStatus").className =
+            "status-value";
+
+          const response = await fetch(
+            `${API_BASE_URL}/gps-data/${deviceId}?limit=${limit}`
+          );
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+
+          const data = await response.json();
+
+          if (data.data && data.data.length > 0) {
+            updateMap(data.data);
+            updateDataList(data.data);
+            updateStatus(data.data);
+
+            document.getElementById("connectionStatus").textContent =
+              "Conectado";
+            document.getElementById("connectionStatus").className =
+              "status-value";
+          } else {
+            document.getElementById("connectionStatus").textContent =
+              "Sin datos";
+            document.getElementById("connectionStatus").className =
+              "status-value offline";
+            document.getElementById("dataList").innerHTML =
+              '<div class="error">No se encontraron datos GPS</div>';
+          }
+        } catch (error) {
+          console.error("Error loading GPS data:", error);
+          document.getElementById("connectionStatus").textContent = "Error";
+          document.getElementById("connectionStatus").className =
+            "status-value offline";
+          document.getElementById(
+            "dataList"
+          ).innerHTML = `<div class="error">Error: ${error.message}</div>`;
+        }
+      }
+
+      // Actualizar el mapa con nuevos datos
+      function updateMap(gpsData) {
+        // Limpiar markers anteriores
+        markers.forEach((marker) => marker.setMap(null));
+        markers = [];
+
+        // Limpiar ruta anterior
+        if (path) {
+          path.setMap(null);
+        }
+
+        if (gpsData.length === 0) return;
+
+        // Crear coordenadas para la ruta
+        const coordinates = gpsData.map((point) => ({
+          lat: point.latitude,
+          lng: point.longitude,
+        }));
+
+        // Crear ruta
+        path = new google.maps.Polyline({
+          path: coordinates,
+          geodesic: true,
+          strokeColor: "#FF0000",
+          strokeOpacity: 1.0,
+          strokeWeight: 3,
+        });
+        path.setMap(map);
+
+        // Agregar markers
+        gpsData.forEach((point, index) => {
+          const position = { lat: point.latitude, lng: point.longitude };
+          const isLatest = index === 0;
+
+          const marker = new google.maps.Marker({
+            position: position,
+            map: map,
+            title: `${point.device_id} - ${new Date(
+              point.timestamp
+            ).toLocaleString()}`,
+            icon: {
+              url: isLatest
+                ? 'data:image/svg+xml;charset=UTF-8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="%23FF0000"><circle cx="12" cy="12" r="8"/></svg>'
+                : 'data:image/svg+xml;charset=UTF-8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="%230066CC"><circle cx="12" cy="12" r="6"/></svg>',
+              scaledSize: new google.maps.Size(
+                isLatest ? 24 : 16,
+                isLatest ? 24 : 16
+              ),
+            },
+          });
+
+          // Info window para cada marker
+          const infoWindow = new google.maps.InfoWindow({
+            content: `
+                        <div style="font-family: Arial, sans-serif; line-height: 1.4;">
+                            <h4 style="margin: 0 0 8px 0; color: #333;">📍 ${
+                              point.device_id
+                            }</h4>
+                            <p style="margin: 2px 0;"><strong>Coordenadas:</strong> ${point.latitude.toFixed(
+                              6
+                            )}, ${point.longitude.toFixed(6)}</p>
+                            <p style="margin: 2px 0;"><strong>Altitud:</strong> ${
+                              point.altitude
+                            }m</p>
+                            <p style="margin: 2px 0;"><strong>Velocidad:</strong> ${point.speed_kmph.toFixed(
+                              2
+                            )} km/h</p>
+                            <p style="margin: 2px 0;"><strong>Satélites:</strong> ${
+                              point.satellites
+                            }</p>
+                            <p style="margin: 2px 0;"><strong>Precisión:</strong> ${
+                              point.hdop
+                            }</p>
+                            <p style="margin: 2px 0;"><strong>Hora:</strong> ${new Date(
+                              point.timestamp
+                            ).toLocaleString()}</p>
+                        </div>
+                    `,
+          });
+
+          marker.addListener("click", () => {
+            infoWindow.open(map, marker);
+          });
+
+          markers.push(marker);
+        });
+
+        // Centrar mapa en el punto más reciente
+        const latestPoint = gpsData[0];
+        map.setCenter({
+          lat: latestPoint.latitude,
+          lng: latestPoint.longitude,
+        });
+      }
+
+      // Actualizar lista de datos
+      function updateDataList(gpsData) {
+        const dataList = document.getElementById("dataList");
+
+        if (gpsData.length === 0) {
+          dataList.innerHTML =
+            '<div class="error">No hay datos disponibles</div>';
+          return;
+        }
+
+        const listHTML = gpsData
+          .map(
+            (point, index) => `
+                <div class="data-item">
+                    <div class="data-time">
+                        ${index === 0 ? "🔴 ÚLTIMO: " : "📍 "}${new Date(
+              point.timestamp
+            ).toLocaleString()}
+                    </div>
+                    <div class="data-coords">
+                        ${point.latitude.toFixed(6)}, ${point.longitude.toFixed(
+              6
+            )}
+                    </div>
+                    <div class="data-stats">
+                        <div>Alt: ${point.altitude}m</div>
+                        <div>Vel: ${point.speed_kmph.toFixed(1)} km/h</div>
+                        <div>Sat: ${point.satellites}</div>
+                        <div>HDOP: ${point.hdop}</div>
+                    </div>
+                </div>
+            `
+          )
+          .join("");
+
+        dataList.innerHTML = listHTML;
+      }
+
+      // Actualizar estado
+      function updateStatus(gpsData) {
+        if (gpsData.length === 0) return;
+
+        const latest = gpsData[0];
+
+        document.getElementById("lastUpdate").textContent = new Date(
+          latest.timestamp
+        ).toLocaleString();
+        document.getElementById("totalPoints").textContent = gpsData.length;
+        document.getElementById(
+          "gpsAccuracy"
+        ).textContent = `${latest.hdop} (${latest.satellites} sat)`;
+      }
+
+      // Toggle auto-actualización
+      function toggleAutoUpdate() {
+        const button = event.target;
+
+        if (isAutoUpdate) {
+          clearInterval(autoUpdateInterval);
+          isAutoUpdate = false;
+          button.textContent = "⏱️ Auto-actualizar";
+          button.style.background =
+            "linear-gradient(135deg, #667eea 0%, #764ba2 100%)";
+        } else {
+          autoUpdateInterval = setInterval(loadGPSData, 30000); // 30 segundos
+          isAutoUpdate = true;
+          button.textContent = "⏹️ Detener auto";
+          button.style.background =
+            "linear-gradient(135deg, #28a745 0%, #20c997 100%)";
+          loadGPSData(); // Cargar inmediatamente
+        }
+      }
+
+      // Event listeners
+      document
+        .getElementById("deviceSelect")
+        .addEventListener("change", loadGPSData);
+      document
+        .getElementById("limitSelect")
+        .addEventListener("change", loadGPSData);
+
+      // Inicializar la aplicación
+      window.onload = function () {
+        // Si Google Maps no está disponible, mostrar mensaje
+        if (typeof google === "undefined") {
+          document.getElementById("map").innerHTML = `
+                    <div style="display: flex; align-items: center; justify-content: center; height: 100%; background: #f8f9fa; color: #6c757d; text-align: center; padding: 20px;">
+                        <div>
+                            <h3>⚠️ Google Maps API requerida</h3>
+                            <p>Para usar este sitio web, necesitas:</p>
+                            <ol style="text-align: left; margin: 20px 0;">
+                                <li>Obtener una API key de Google Maps</li>
+                                <li>Reemplazar 'TU_API_KEY_DE_GOOGLE_MAPS' en el código</li>
+                                <li>Agregar el script de Google Maps</li>
+                            </ol>
+                            <p>Mientras tanto, puedes usar el panel lateral para ver los datos GPS.</p>
+                        </div>
+                    </div>
+                `;
+
+          // Cargar datos sin mapa
+          setTimeout(loadGPSData, 1000);
+        }
+      };
+    </script>
+
+    <!-- Descomenta esta línea y agrega tu API key de Google Maps -->
+    <!-- <script async defer src="https://maps.googleapis.com/maps/api/js?key=TU_API_KEY&callback=initMap"></script> -->
+  </body>
+</html>
